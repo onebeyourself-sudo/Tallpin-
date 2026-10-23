@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Blade Runner Demo - Desert Warrior (Jouable)</title>
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: #000;
+            font-family: 'Courier New', monospace;
+            color: #0ff;
+            touch-action: none;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 10px #0ff;
+        }
+        h1 { margin: 0; font-size: 24px; letter-spacing: 4px; }
+        p { margin: 5px 0; font-size: 14px; opacity: 0.8; }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 13px;
+            opacity: 0.7;
+            pointer-events: none;
+            text-shadow: 0 0 8px #0ff;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <h1>REPLICANT</h1>
+        <p>Blade Runner - Desert Warrior</p>
+        <p>Mode Jouable</p>
+    </div>
+    <div id="instructions">
+        Tactile : Joystick virtuel (gauche) pour se déplacer<br>
+        Clavier : ZQSD ou WASD pour se déplacer • Souris pour regarder
+    </div>
+    <canvas id="renderCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, adaptToDeviceRatio: true });
+
+        const createScene = async function () {
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color4(0.01, 0.02, 0.05, 1);
+            scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+            scene.fogDensity = 0.008;
+            scene.fogColor = new BABYLON.Color3(0.02, 0.03, 0.08);
+
+            // Camera (third person follow)
+            const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 3, 6, new BABYLON.Vector3(0, 1.5, 0), scene);
+            camera.lowerRadiusLimit = 3;
+            camera.upperRadiusLimit = 20;
+            camera.lowerBetaLimit = 0.3;
+            camera.upperBetaLimit = Math.PI / 2.2;
+            camera.attachControl(canvas, true);
+            camera.wheelPrecision = 50;
+
+            // Lights
+            const hemi = new BABYLON.HemisphericLight("hemi", new BABYLON.Vector3(0, 1, 0), scene);
+            hemi.intensity = 0.25;
+            hemi.groundColor = new BABYLON.Color3(0.05, 0.05, 0.1);
+
+            const moon = new BABYLON.DirectionalLight("moon", new BABYLON.Vector3(-0.6, -1, -0.2), scene);
+            moon.intensity = 0.6;
+            moon.diffuse = new BABYLON.Color3(0.4, 0.5, 0.7);
+
+            // Neon colors
+            const neonColors = [
+                new BABYLON.Color3(1, 0.2, 0.4),
+                new BABYLON.Color3(0.2, 0.8, 1),
+                new BABYLON.Color3(1, 0.6, 0.1),
+                new BABYLON.Color3(0.8, 0.2, 1)
+            ];
+
+            // Wet ground
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 200, height: 200, subdivisions: 40 }, scene);
+            const groundMat = new BABYLON.PBRMaterial("groundMat", scene);
+            groundMat.albedoColor = new BABYLON.Color3(0.04, 0.04, 0.07);
+            groundMat.metallic = 0.9;
+            groundMat.roughness = 0.08;
+            ground.material = groundMat;
+            ground.receiveShadows = true;
+
+            scene.environmentTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+                "https://assets.babylonjs.com/environments/environmentSpecular.env",
+                scene
+            );
+            scene.environmentIntensity = 0.4;
+
+            // Buildings
+            function createBuilding(x, z, w, d, h, neonColor) {
+                const building = BABYLON.MeshBuilder.CreateBox("building", { width: w, depth: d, height: h }, scene);
+                building.position = new BABYLON.Vector3(x, h / 2, z);
+                const mat = new BABYLON.PBRMaterial("bmat", scene);
+                mat.albedoColor = new BABYLON.Color3(0.07, 0.07, 0.09);
+                mat.metallic = 0.4;
+                mat.roughness = 0.65;
+                building.material = mat;
+
+                const windows = BABYLON.MeshBuilder.CreateBox("windows", { width: w * 0.85, depth: 0.15, height: h * 0.75 }, scene);
+                windows.position = building.position.add(new BABYLON.Vector3(0, 0, d / 2 + 0.08));
+                const winMat = new BABYLON.PBRMaterial("win", scene);
+                winMat.albedoColor = neonColor.scale(0.05);
+                winMat.emissiveColor = neonColor;
+                winMat.emissiveIntensity = 3;
+                windows.material = winMat;
+
+                const light = new BABYLON.PointLight("neon", windows.position.add(new BABYLON.Vector3(0, 0, 1.5)), scene);
+                light.diffuse = neonColor;
+                light.intensity = 15;
+                light.range = 35;
+            }
+
+            for (let i = -5; i <= 5; i++) {
+                if (Math.abs(i) < 1.5) continue;
+                const side = i > 0 ? 1 : -1;
+                createBuilding(side * (12 + Math.abs(i) * 8), -25, 6, 12, 16 + Math.random() * 12, neonColors[Math.abs(i) % 4]);
+                createBuilding(side * (12 + Math.abs(i) * 8), 25, 6, 12, 14 + Math.random() * 14, neonColors[(Math.abs(i) + 2) % 4]);
+            }
+
+            // Virtual Joystick for touch
+            const joystick = new BABYLON.VirtualJoystick(true); // true = left joystick
+            joystick.setJoystickSensibility(0.2);
+
+            // Character variables
+            let characterRoot = null;
+            let characterMeshes = [];
+            const moveSpeed = 4.5;
+            const rotationSpeed = 8;
+
+            // Load the GLB character
+            try {
+                const result = await BABYLON.SceneLoader.ImportMeshAsync("", "./", "desert_warrior.glb", scene);
+                characterRoot = result.meshes[0];
+                characterMeshes = result.meshes;
+
+                characterRoot.position = new BABYLON.Vector3(0, 0, 0);
+                characterRoot.scaling = new BABYLON.Vector3(1.3, 1.3, 1.3);
+                characterRoot.rotation.y = Math.PI;
+
+                // Enable shadows
+                result.meshes.forEach(mesh => {
+                    if (mesh.getTotalVertices() > 0) {
+                        mesh.receiveShadows = true;
+                    }
+                });
+
+                // Set camera target to character
+                camera.setTarget(characterRoot.position.add(new BABYLON.Vector3(0, 1.4, 0)));
+
+                console.log("Personnage chargé :", result.meshes.length, "meshes");
+            } catch (err) {
+                console.error("Échec du chargement du GLB :", err);
+                characterRoot = BABYLON.MeshBuilder.CreateBox("fallback", {size: 1.5}, scene);
+                characterRoot.position.y = 0.75;
+            }
+
+            // Input state
+            const inputMap = {};
+            scene.actionManager = new BABYLON.ActionManager(scene);
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, (evt) => {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = true;
+            }));
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, (evt) => {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = false;
+            }));
+
+            // Rain
+            const rain = new BABYLON.ParticleSystem("rain", 5000, scene);
+            rain.particleTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/flare.png", scene);
+            rain.emitter = new BABYLON.Vector3(0, 30, 0);
+            rain.minEmitBox = new BABYLON.Vector3(-50, 0, -50);
+            rain.maxEmitBox = new BABYLON.Vector3(50, 0, 50);
+            rain.color1 = new BABYLON.Color4(0.6, 0.7, 1, 0.6);
+            rain.color2 = new BABYLON.Color4(0.4, 0.5, 0.8, 0.4);
+            rain.minSize = 0.05;
+            rain.maxSize = 0.15;
+            rain.minLifeTime = 1.4;
+            rain.maxLifeTime = 2.5;
+            rain.emitRate = 800;
+            rain.gravity = new BABYLON.Vector3(0, -20, 0);
+            rain.direction1 = new BABYLON.Vector3(-0.2, -1, 0);
+            rain.direction2 = new BABYLON.Vector3(0.2, -1, 0);
+            rain.start();
+
+            // AAA Post-processing
+            const pipeline = new BABYLON.DefaultRenderingPipeline("pipeline", true, scene, [camera]);
+            pipeline.samples = 4;
+            pipeline.fxaaEnabled = true;
+            pipeline.bloomEnabled = true;
+            pipeline.bloomThreshold = 0.5;
+            pipeline.bloomWeight = 0.8;
+            pipeline.bloomKernel = 64;
+            pipeline.chromaticAberrationEnabled = true;
+            pipeline.chromaticAberration.aberrationAmount = 6;
+            pipeline.grainEnabled = true;
+            pipeline.grain.intensity = 8;
+            pipeline.imageProcessingEnabled = true;
+            pipeline.imageProcessing.contrast = 1.2;
+            pipeline.imageProcessing.exposure = 0.9;
+            pipeline.imageProcessing.toneMappingEnabled = true;
+            pipeline.imageProcessing.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+            pipeline.imageProcessing.vignetteEnabled = true;
+            pipeline.imageProcessing.vignetteWeight = 1.5;
+
+            const gl = new BABYLON.GlowLayer("glow", scene);
+            gl.intensity = 0.7;
+
+            // Update loop
+            scene.onBeforeRenderObservable.add(() => {
+                if (!characterRoot) return;
+
+                const dt = engine.getDeltaTime() / 1000;
+
+                // Get movement input
+                let inputX = 0;
+                let inputZ = 0;
+
+                // Keyboard
+                if (inputMap["z"] || inputMap["w"] || inputMap["arrowup"]) inputZ += 1;
+                if (inputMap["s"] || inputMap["arrowdown"]) inputZ -= 1;
+                if (inputMap["q"] || inputMap["a"] || inputMap["arrowleft"]) inputX -= 1;
+                if (inputMap["d"] || inputMap["arrowright"]) inputX += 1;
+
+                // Virtual Joystick (touch)
+                if (joystick.pressed) {
+                    inputX = joystick.deltaPosition.x;
+                    inputZ = -joystick.deltaPosition.y; // inverted for forward
+                }
+
+                // Normalize and apply movement
+                const length = Math.sqrt(inputX * inputX + inputZ * inputZ);
+                if (length > 0.1) {
+                    inputX /= length;
+                    inputZ /= length;
+
+                    // Move in world space relative to camera? Or absolute?
+                    // For simplicity, move relative to camera direction
+                    const camForward = camera.getDirection(BABYLON.Axis.Z).normalize();
+                    const camRight = camera.getDirection(BABYLON.Axis.X).normalize();
+
+                    const moveDir = camRight.scale(inputX).add(camForward.scale(inputZ));
+                    moveDir.y = 0;
+                    moveDir.normalize();
+
+                    const speed = moveSpeed * dt;
+                    characterRoot.position.addInPlace(moveDir.scale(speed));
+
+                    // Rotate character to face movement direction
+                    const targetRotation = Math.atan2(moveDir.x, moveDir.z);
+                    let currentRot = characterRoot.rotation.y;
+                    // Smooth rotation
+                    let diff = targetRotation - currentRot;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    characterRoot.rotation.y += diff * Math.min(1, rotationSpeed * dt);
+                }
+
+                // Keep character on ground (simple)
+                characterRoot.position.y = 0;
+
+                // Update camera target to follow character
+                const targetPos = characterRoot.position.add(new BABYLON.Vector3(0, 1.6, 0));
+                camera.setTarget(BABYLON.Vector3.Lerp(camera.target, targetPos, 0.1));
+            });
+
+            return scene;
+        };
+
+        createScene().then(scene => {
+            engine.runRenderLoop(() => {
+                scene.render();
+            });
+        });
+
+        window.addEventListener("resize", () => {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
